@@ -31,6 +31,7 @@ import struct
 import datetime
 import getpass
 import pwd
+from subprocess import Popen, PIPE
 
 from ansible.module_utils.basic import get_all_subclasses
 from ansible.module_utils.six import PY3, iteritems
@@ -39,13 +40,15 @@ from ansible.module_utils._text import to_native, to_text
 
 try:
     import selinux
-    HAVE_SELINUX=True
+
+    HAVE_SELINUX = True
 except ImportError:
-    HAVE_SELINUX=False
+    HAVE_SELINUX = False
 
 try:
     # Check if we have SSLContext support
     from ssl import create_default_context, SSLContext
+
     del create_default_context
     del SSLContext
     HAS_SSLCONTEXT = True
@@ -54,6 +57,7 @@ except ImportError:
 
 try:
     import json
+
     # Detect python-json which is incompatible and fallback to simplejson in
     # that case
     try:
@@ -71,19 +75,19 @@ except ImportError:
 if platform.system() != 'SunOS':
     from distutils.version import LooseVersion
 
-
 # --------------------------------------------------------------
 # timeout function to make sure some fact gathering
 # steps do not exceed a time limit
 
-GATHER_TIMEOUT=None
+GATHER_TIMEOUT = None
 DEFAULT_GATHER_TIMEOUT = 10
+
 
 class TimeoutError(Exception):
     pass
 
-def timeout(seconds=None, error_message="Timer expired"):
 
+def timeout(seconds=None, error_message="Timer expired"):
     def decorator(func):
         def _handle_timeout(signum, frame):
             raise TimeoutError(error_message)
@@ -117,6 +121,7 @@ def timeout(seconds=None, error_message="Timer expired"):
 
     return decorator
 
+
 # --------------------------------------------------------------
 
 class Facts(object):
@@ -133,33 +138,33 @@ class Facts(object):
     _I386RE = re.compile(r'i([3456]86|86pc)')
     # For the most part, we assume that platform.dist() will tell the truth.
     # This is the fallback to handle unknowns or exceptions
-    SELINUX_MODE_DICT = { 1: 'enforcing', 0: 'permissive', -1: 'disabled' }
+    SELINUX_MODE_DICT = {1: 'enforcing', 0: 'permissive', -1: 'disabled'}
 
     # A list of dicts.  If there is a platform with more than one
     # package manager, put the preferred one last.  If there is an
     # ansible module, use that as the value for the 'name' key.
-    PKG_MGRS = [ { 'path' : '/usr/bin/yum',         'name' : 'yum' },
-                 { 'path' : '/usr/bin/dnf',         'name' : 'dnf' },
-                 { 'path' : '/usr/bin/apt-get',     'name' : 'apt' },
-                 { 'path' : '/usr/bin/zypper',      'name' : 'zypper' },
-                 { 'path' : '/usr/sbin/urpmi',      'name' : 'urpmi' },
-                 { 'path' : '/usr/bin/pacman',      'name' : 'pacman' },
-                 { 'path' : '/bin/opkg',            'name' : 'opkg' },
-                 { 'path' : '/usr/pkg/bin/pkgin',   'name' : 'pkgin' },
-                 { 'path' : '/opt/local/bin/pkgin', 'name' : 'pkgin' },
-                 { 'path' : '/opt/tools/bin/pkgin', 'name' : 'pkgin' },
-                 { 'path' : '/opt/local/bin/port',  'name' : 'macports' },
-                 { 'path' : '/usr/local/bin/brew',  'name' : 'homebrew' },
-                 { 'path' : '/sbin/apk',            'name' : 'apk' },
-                 { 'path' : '/usr/sbin/pkg',        'name' : 'pkgng' },
-                 { 'path' : '/usr/sbin/swlist',     'name' : 'SD-UX' },
-                 { 'path' : '/usr/bin/emerge',      'name' : 'portage' },
-                 { 'path' : '/usr/sbin/pkgadd',     'name' : 'svr4pkg' },
-                 { 'path' : '/usr/bin/pkg',         'name' : 'pkg5' },
-                 { 'path' : '/usr/bin/xbps-install','name' : 'xbps' },
-                 { 'path' : '/usr/local/sbin/pkg',  'name' : 'pkgng' },
-                 { 'path' : '/usr/bin/swupd',       'name' : 'swupd' },
-                 { 'path' : '/usr/sbin/sorcery',    'name' : 'sorcery' },
+    PKG_MGRS = [{'path': '/usr/bin/yum', 'name': 'yum'},
+                {'path': '/usr/bin/dnf', 'name': 'dnf'},
+                {'path': '/usr/bin/apt-get', 'name': 'apt'},
+                {'path': '/usr/bin/zypper', 'name': 'zypper'},
+                {'path': '/usr/sbin/urpmi', 'name': 'urpmi'},
+                {'path': '/usr/bin/pacman', 'name': 'pacman'},
+                {'path': '/bin/opkg', 'name': 'opkg'},
+                {'path': '/usr/pkg/bin/pkgin', 'name': 'pkgin'},
+                {'path': '/opt/local/bin/pkgin', 'name': 'pkgin'},
+                {'path': '/opt/tools/bin/pkgin', 'name': 'pkgin'},
+                {'path': '/opt/local/bin/port', 'name': 'macports'},
+                {'path': '/usr/local/bin/brew', 'name': 'homebrew'},
+                {'path': '/sbin/apk', 'name': 'apk'},
+                {'path': '/usr/sbin/pkg', 'name': 'pkgng'},
+                {'path': '/usr/sbin/swlist', 'name': 'SD-UX'},
+                {'path': '/usr/bin/emerge', 'name': 'portage'},
+                {'path': '/usr/sbin/pkgadd', 'name': 'svr4pkg'},
+                {'path': '/usr/bin/pkg', 'name': 'pkg5'},
+                {'path': '/usr/bin/xbps-install', 'name': 'xbps'},
+                {'path': '/usr/local/sbin/pkg', 'name': 'pkgng'},
+                {'path': '/usr/bin/swupd', 'name': 'swupd'},
+                {'path': '/usr/sbin/sorcery', 'name': 'sorcery'},
                 ]
 
     def __init__(self, module, load_on_init=True, cached_facts=None):
@@ -191,13 +196,30 @@ class Facts(object):
             self.get_env_facts()
             self.get_dns_facts()
             self.get_python_facts()
-
+            self.get_libreOffice_facts()
 
     def populate(self):
         return self.facts
 
     # Platform
     # platform.system() can be Linux, Darwin, Java, or Windows
+    def get_libreOffice_facts(self):
+        if platform.linux_distribution()[0] == 'Ubuntu':
+            dpkg = Popen(['dpkg', '-s', 'libreoffice-writer'], stdout=PIPE, stderr=PIPE)
+            dpkg.wait()
+            if dpkg.returncode:
+                self.facts['libreOffice'] = 'libreoffice-writer not installed'
+                return
+            else:
+                grep = Popen(['grep', 'Version'], stdin=dpkg.stdout, stderr=PIPE, stdout=PIPE)
+                dpkg.stdout.close()
+                grep.wait()
+                res = grep.communicate()
+                if grep.returncode:
+                    self.facts['libreOffice'] = 'error'
+                    return
+                self.facts['libreOffice'] = res[0][11:20].decode('utf-8')
+
     def get_platform_facts(self):
         self.facts['system'] = platform.system()
         self.facts['kernel'] = platform.release()
@@ -252,7 +274,7 @@ class Facts(object):
         local = {}
         for fn in sorted(glob.glob(fact_path + '/*.fact')):
             # where it will sit under local facts
-            fact_base = os.path.basename(fn).replace('.fact','')
+            fact_base = os.path.basename(fn).replace('.fact', '')
             if stat.S_IXUSR & os.stat(fn)[stat.ST_MODE]:
                 # run it
                 # try to read it as json first
@@ -286,7 +308,7 @@ class Facts(object):
                             fact[sect] = {}
                         for opt in cp.options(sect):
                             val = cp.get(sect, opt)
-                            fact[sect][opt]=val
+                            fact[sect][opt] = val
 
             local[fact_base] = fact
         if not local:
@@ -336,7 +358,7 @@ class Facts(object):
                     self.facts['pkg_mgr'] = pkg['name']
 
     def get_service_mgr_facts(self):
-        #TODO: detect more custom init setups like bootscripts, dmd, s6, Epoch, etc
+        # TODO: detect more custom init setups like bootscripts, dmd, s6, Epoch, etc
         # also other OSs other than linux might need to check across several possible candidates
 
         # Mapping of proc_1 values to more useful names
@@ -376,13 +398,13 @@ class Facts(object):
 
         # start with the easy ones
         elif self.facts['distribution'] == 'MacOSX':
-            #FIXME: find way to query executable, version matching is not ideal
+            # FIXME: find way to query executable, version matching is not ideal
             if LooseVersion(platform.mac_ver()[0]) >= LooseVersion('10.4'):
                 self.facts['service_mgr'] = 'launchd'
             else:
                 self.facts['service_mgr'] = 'systemstarter'
         elif 'BSD' in self.facts['system'] or self.facts['system'] in ['Bitrig', 'DragonFly']:
-            #FIXME: we might want to break out to individual BSDs or 'rc'
+            # FIXME: we might want to break out to individual BSDs or 'rc'
             self.facts['service_mgr'] = 'bsdinit'
         elif self.facts['system'] == 'AIX':
             self.facts['service_mgr'] = 'src'
@@ -427,7 +449,7 @@ class Facts(object):
         elif lsb_path is None and os.path.exists('/etc/lsb-release'):
             self.facts['lsb'] = {}
             for line in get_file_lines('/etc/lsb-release'):
-                value = line.split('=',1)[1].strip()
+                value = line.split('=', 1)[1].strip()
                 if 'DISTRIB_ID' in line:
                     self.facts['lsb']['id'] = value
                 elif 'DISTRIB_RELEASE' in line:
@@ -451,7 +473,7 @@ class Facts(object):
             self.facts['selinux']['status'] = 'enabled'
             try:
                 self.facts['selinux']['policyvers'] = selinux.security_policyvers()
-            except (AttributeError,OSError):
+            except (AttributeError, OSError):
                 self.facts['selinux']['policyvers'] = 'unknown'
             try:
                 (rc, configmode) = selinux.selinux_getenforcemode()
@@ -459,12 +481,12 @@ class Facts(object):
                     self.facts['selinux']['config_mode'] = Facts.SELINUX_MODE_DICT.get(configmode, 'unknown')
                 else:
                     self.facts['selinux']['config_mode'] = 'unknown'
-            except (AttributeError,OSError):
+            except (AttributeError, OSError):
                 self.facts['selinux']['config_mode'] = 'unknown'
             try:
                 mode = selinux.security_getenforce()
                 self.facts['selinux']['mode'] = Facts.SELINUX_MODE_DICT.get(mode, 'unknown')
-            except (AttributeError,OSError):
+            except (AttributeError, OSError):
                 self.facts['selinux']['mode'] = 'unknown'
             try:
                 (rc, policytype) = selinux.selinux_getpolicytype()
@@ -472,7 +494,7 @@ class Facts(object):
                     self.facts['selinux']['type'] = policytype
                 else:
                     self.facts['selinux']['type'] = 'unknown'
-            except (AttributeError,OSError):
+            except (AttributeError, OSError):
                 self.facts['selinux']['type'] = 'unknown'
 
     def get_apparmor_facts(self):
@@ -501,13 +523,11 @@ class Facts(object):
             self.facts['system_capabilities_enforced'] = enforced
             self.facts['system_capabilities'] = enforced_caps
 
-
     def get_fips_facts(self):
         self.facts['fips'] = False
         data = get_file_content('/proc/sys/crypto/fips_enabled')
         if data and data == '1':
             self.facts['fips'] = True
-
 
     def get_date_time_facts(self):
         self.facts['date_time'] = {}
@@ -561,7 +581,7 @@ class Facts(object):
 
     def get_env_facts(self):
         self.facts['env'] = {}
-        for k,v in iteritems(os.environ):
+        for k, v in iteritems(os.environ):
             self.facts['env'][k] = v
 
     def get_dns_facts(self):
@@ -675,15 +695,17 @@ class Distribution(object):
 
     # A list with OS Family members
     OS_FAMILY = dict(
-        RedHat = 'RedHat', Fedora = 'RedHat', CentOS = 'RedHat', Scientific = 'RedHat',
-        SLC = 'RedHat', Ascendos = 'RedHat', CloudLinux = 'RedHat', PSBM = 'RedHat',
-        OracleLinux = 'RedHat', OVS = 'RedHat', OEL = 'RedHat', Amazon = 'RedHat', Virtuozzo = 'RedHat',
-        XenServer = 'RedHat', Ubuntu = 'Debian', Debian = 'Debian', Raspbian = 'Debian', Slackware = 'Slackware', SLES = 'Suse',
-        SLED = 'Suse', openSUSE = 'Suse', openSUSE_Tumbleweed = 'Suse', SuSE = 'Suse', SLES_SAP = 'Suse', SUSE_LINUX = 'Suse', Gentoo = 'Gentoo', Funtoo = 'Gentoo',
-        Archlinux = 'Archlinux', Manjaro = 'Archlinux', Mandriva = 'Mandrake', Mandrake = 'Mandrake', Altlinux = 'Altlinux', SMGL = 'SMGL',
-        Solaris = 'Solaris', Nexenta = 'Solaris', OmniOS = 'Solaris', OpenIndiana = 'Solaris',
-        SmartOS = 'Solaris', AIX = 'AIX', Alpine = 'Alpine', MacOSX = 'Darwin',
-        FreeBSD = 'FreeBSD', HPUX = 'HP-UX', openSUSE_Leap = 'Suse', Neon = 'Debian'
+        RedHat='RedHat', Fedora='RedHat', CentOS='RedHat', Scientific='RedHat',
+        SLC='RedHat', Ascendos='RedHat', CloudLinux='RedHat', PSBM='RedHat',
+        OracleLinux='RedHat', OVS='RedHat', OEL='RedHat', Amazon='RedHat', Virtuozzo='RedHat',
+        XenServer='RedHat', Ubuntu='Debian', Debian='Debian', Raspbian='Debian', Slackware='Slackware', SLES='Suse',
+        SLED='Suse', openSUSE='Suse', openSUSE_Tumbleweed='Suse', SuSE='Suse', SLES_SAP='Suse', SUSE_LINUX='Suse',
+        Gentoo='Gentoo', Funtoo='Gentoo',
+        Archlinux='Archlinux', Manjaro='Archlinux', Mandriva='Mandrake', Mandrake='Mandrake', Altlinux='Altlinux',
+        SMGL='SMGL',
+        Solaris='Solaris', Nexenta='Solaris', OmniOS='Solaris', OpenIndiana='Solaris',
+        SmartOS='Solaris', AIX='AIX', Alpine='Alpine', MacOSX='Darwin',
+        FreeBSD='FreeBSD', HPUX='HP-UX', openSUSE_Leap='Suse', Neon='Debian'
     )
 
     def __init__(self, module):
@@ -707,8 +729,8 @@ class Distribution(object):
         self.facts['distribution'] = self.system
 
         if self.system in systems_implemented:
-            cleanedname = self.system.replace('-','')
-            distfunc = getattr(self, 'get_distribution_'+cleanedname)
+            cleanedname = self.system.replace('-', '')
+            distfunc = getattr(self, 'get_distribution_' + cleanedname)
             distfunc()
         elif self.system == 'Linux':
             # try to find out which linux distribution this is
@@ -759,13 +781,13 @@ class Distribution(object):
 
 
 
-                    # to debug multiple matching release files, one can use:
-                    # self.facts['distribution_debug'].append({path + ' ' + name:
-                    #         (parsed,
-                    #          self.facts['distribution'],
-                    #          self.facts['distribution_version'],
-                    #          self.facts['distribution_release'],
-                    #          )})
+                        # to debug multiple matching release files, one can use:
+                        # self.facts['distribution_debug'].append({path + ' ' + name:
+                        #         (parsed,
+                        #          self.facts['distribution'],
+                        #          self.facts['distribution_version'],
+                        #          self.facts['distribution_release'],
+                        #          )})
 
         self.facts['os_family'] = self.facts['distribution']
         distro = self.facts['distribution'].replace(' ', '_')
@@ -779,7 +801,8 @@ class Distribution(object):
         self.facts['distribution_release'] = data[1]
 
     def get_distribution_HPUX(self):
-        rc, out, err = self.module.run_command("/usr/sbin/swlist |egrep 'HPUX.*OE.*[AB].[0-9]+\.[0-9]+'", use_unsafe_shell=True)
+        rc, out, err = self.module.run_command("/usr/sbin/swlist |egrep 'HPUX.*OE.*[AB].[0-9]+\.[0-9]+'",
+                                               use_unsafe_shell=True)
         data = re.search('HPUX.*OE.*([AB].[0-9]+\.[0-9]+)\.([0-9]+).*', out)
         if data:
             self.facts['distribution_version'] = data.groups()[0]
@@ -850,7 +873,7 @@ class Distribution(object):
         if 'Solaris' in data:
             ora_prefix = ''
             if 'Oracle Solaris' in data:
-                data = data.replace('Oracle ','')
+                data = data.replace('Oracle ', '')
                 ora_prefix = 'Oracle '
             self.facts['distribution'] = data.split()[0]
             self.facts['distribution_version'] = data.split()[1]
@@ -862,7 +885,8 @@ class Distribution(object):
         if 'SmartOS' in data:
             self.facts['distribution'] = 'SmartOS'
             if os.path.exists('/etc/product'):
-                product_data = dict([l.split(': ', 1) for l in get_file_content('/etc/product').splitlines() if ': ' in l])
+                product_data = dict(
+                    [l.split(': ', 1) for l in get_file_content('/etc/product').splitlines() if ': ' in l])
                 if 'Image' in product_data:
                     distribution_version = product_data.get('Image').split()[-1]
         elif 'OpenIndiana' in data:
@@ -925,7 +949,7 @@ class Distribution(object):
                 elif "Desktop" in data:
                     self.facts['distribution'] = "SLED"
                 for line in lines:
-                    release = re.search('PATCHLEVEL = ([0-9]+)', line) # SLES doesn't got funny release names
+                    release = re.search('PATCHLEVEL = ([0-9]+)', line)  # SLES doesn't got funny release names
                     if release:
                         self.facts['distribution_release'] = release.group(1)
                         self.facts['distribution_version'] = self.facts['distribution_version'] + '.' + release.group(1)
@@ -1037,7 +1061,6 @@ class Hardware(Facts):
         return sysctl
 
 
-
 class LinuxHardware(Hardware):
     """
     Linux-specific subclass of Hardware.  Defines memory and CPU facts:
@@ -1104,22 +1127,22 @@ class LinuxHardware(Hardware):
             memstats['swap:used'] = memstats['swaptotal'] - memstats['swapfree']
 
         self.facts['memory_mb'] = {
-            'real' : {
+            'real': {
                 'total': memstats.get('memtotal'),
                 'used': memstats.get('real:used'),
                 'free': memstats.get('memfree'),
-                },
-            'nocache' : {
+            },
+            'nocache': {
                 'free': memstats.get('nocache:free'),
                 'used': memstats.get('nocache:used'),
-                },
-            'swap' : {
+            },
+            'swap': {
                 'total': memstats.get('swaptotal'),
                 'free': memstats.get('swapfree'),
                 'used': memstats.get('swap:used'),
                 'cached': memstats.get('swapcached'),
-                },
-            }
+            },
+        }
 
     def get_cpu_facts(self):
         i = 0
@@ -1216,7 +1239,7 @@ class LinuxHardware(Hardware):
                     self.facts['processor_threads_per_core'] = 1 // self.facts['processor_cores']
 
                 self.facts['processor_vcpus'] = (self.facts['processor_threads_per_core'] *
-                    self.facts['processor_count'] * self.facts['processor_cores'])
+                                                 self.facts['processor_count'] * self.facts['processor_cores'])
 
     def get_dmi_facts(self):
         ''' learn dmi facts from system
@@ -1228,14 +1251,14 @@ class LinuxHardware(Hardware):
             # Use kernel DMI info, if available
 
             # DMI SPEC -- http://www.dmtf.org/sites/default/files/standards/documents/DSP0134_2.7.0.pdf
-            FORM_FACTOR = [ "Unknown", "Other", "Unknown", "Desktop",
-                            "Low Profile Desktop", "Pizza Box", "Mini Tower", "Tower",
-                            "Portable", "Laptop", "Notebook", "Hand Held", "Docking Station",
-                            "All In One", "Sub Notebook", "Space-saving", "Lunch Box",
-                            "Main Server Chassis", "Expansion Chassis", "Sub Chassis",
-                            "Bus Expansion Chassis", "Peripheral Chassis", "RAID Chassis",
-                            "Rack Mount Chassis", "Sealed-case PC", "Multi-system",
-                            "CompactPCI", "AdvancedTCA", "Blade" ]
+            FORM_FACTOR = ["Unknown", "Other", "Unknown", "Desktop",
+                           "Low Profile Desktop", "Pizza Box", "Mini Tower", "Tower",
+                           "Portable", "Laptop", "Notebook", "Hand Held", "Docking Station",
+                           "All In One", "Sub Notebook", "Space-saving", "Lunch Box",
+                           "Main Server Chassis", "Expansion Chassis", "Sub Chassis",
+                           "Bus Expansion Chassis", "Peripheral Chassis", "RAID Chassis",
+                           "Rack Mount Chassis", "Sealed-case PC", "Multi-system",
+                           "CompactPCI", "AdvancedTCA", "Blade"]
 
             DMI_DICT = {
                 'bios_date': '/sys/devices/virtual/dmi/id/bios_date',
@@ -1246,9 +1269,9 @@ class LinuxHardware(Hardware):
                 'product_uuid': '/sys/devices/virtual/dmi/id/product_uuid',
                 'product_version': '/sys/devices/virtual/dmi/id/product_version',
                 'system_vendor': '/sys/devices/virtual/dmi/id/sys_vendor'
-                }
+            }
 
-            for (key,path) in DMI_DICT.items():
+            for (key, path) in DMI_DICT.items():
                 data = get_file_content(path)
                 if data is not None:
                     if key == 'form_factor':
@@ -1273,13 +1296,13 @@ class LinuxHardware(Hardware):
                 'product_uuid': 'system-uuid',
                 'product_version': 'system-version',
                 'system_vendor': 'system-manufacturer'
-                }
+            }
             for (k, v) in DMI_DICT.items():
                 if dmi_bin is not None:
                     (rc, out, err) = self.module.run_command('%s -s %s' % (dmi_bin, v))
                     if rc == 0:
                         # Strip out commented lines (specific dmidecode output)
-                        thisvalue = ''.join([ line for line in out.splitlines() if not line.startswith('#') ])
+                        thisvalue = ''.join([line for line in out.splitlines() if not line.startswith('#')])
                         try:
                             json.dumps(thisvalue)
                         except UnicodeDecodeError:
@@ -1296,7 +1319,7 @@ class LinuxHardware(Hardware):
         # --exclude 2 makes lsblk ignore floppy disks, which are slower to answer than typical timeouts
         # this uses the linux major device number
         # for details see https://www.kernel.org/doc/Documentation/devices.txt
-        args = ['--list', '--noheadings', '--paths',  '--output', 'NAME,UUID', '--exclude', '2']
+        args = ['--list', '--noheadings', '--paths', '--output', 'NAME,UUID', '--exclude', '2']
         cmd = [lsblk_path] + args
         rc, out, err = self.module.run_command(cmd)
         return rc, out, err
@@ -1464,8 +1487,8 @@ class LinuxHardware(Hardware):
             for key in ['vendor', 'model', 'sas_address', 'sas_device_handle']:
                 d[key] = get_file_content(sysdir + "/device/" + key)
 
-            for key,test in [ ('removable','/removable'), \
-                              ('support_discard','/queue/discard_granularity'),
+            for key, test in [('removable', '/removable'), \
+                              ('support_discard', '/queue/discard_granularity'),
                               ]:
                 d[key] = get_file_content(sysdir + test)
 
@@ -1477,11 +1500,11 @@ class LinuxHardware(Hardware):
                     partname = m.group(1)
                     part_sysdir = sysdir + "/" + partname
 
-                    part['start'] = get_file_content(part_sysdir + "/start",0)
-                    part['sectors'] = get_file_content(part_sysdir + "/size",0)
+                    part['start'] = get_file_content(part_sysdir + "/start", 0)
+                    part['sectors'] = get_file_content(part_sysdir + "/size", 0)
                     part['sectorsize'] = get_file_content(part_sysdir + "/queue/logical_block_size")
                     if not part['sectorsize']:
-                        part['sectorsize'] = get_file_content(part_sysdir + "/queue/hw_sector_size",512)
+                        part['sectorsize'] = get_file_content(part_sysdir + "/queue/hw_sector_size", 512)
                     part['size'] = self.module.pretty_bytes((float(part['sectors']) * float(part['sectorsize'])))
                     part['uuid'] = get_partition_uuid(partname)
                     self.get_holders(part, part_sysdir)
@@ -1501,7 +1524,7 @@ class LinuxHardware(Hardware):
                 d['sectors'] = 0
             d['sectorsize'] = get_file_content(sysdir + "/queue/logical_block_size")
             if not d['sectorsize']:
-                d['sectorsize'] = get_file_content(sysdir + "/queue/hw_sector_size",512)
+                d['sectorsize'] = get_file_content(sysdir + "/queue/hw_sector_size", 512)
             d['size'] = self.module.pretty_bytes(float(d['sectors']) * float(d['sectorsize']))
 
             d['host'] = ""
@@ -1532,23 +1555,23 @@ class LinuxHardware(Hardware):
             lvm_util_options = '--noheadings --nosuffix --units g'
 
             vgs_path = self.module.get_bin_path('vgs')
-            #vgs fields: VG #PV #LV #SN Attr VSize VFree
-            vgs={}
+            # vgs fields: VG #PV #LV #SN Attr VSize VFree
+            vgs = {}
             if vgs_path:
-                rc, vg_lines, err = self.module.run_command( '%s %s' % (vgs_path, lvm_util_options))
+                rc, vg_lines, err = self.module.run_command('%s %s' % (vgs_path, lvm_util_options))
                 for vg_line in vg_lines.splitlines():
                     items = vg_line.split()
-                    vgs[items[0]] = {'size_g':items[-2],
-                                     'free_g':items[-1],
+                    vgs[items[0]] = {'size_g': items[-2],
+                                     'free_g': items[-1],
                                      'num_lvs': items[2],
                                      'num_pvs': items[1]}
 
             lvs_path = self.module.get_bin_path('lvs')
-            #lvs fields:
-            #LV VG Attr LSize Pool Origin Data% Move Log Copy% Convert
+            # lvs fields:
+            # LV VG Attr LSize Pool Origin Data% Move Log Copy% Convert
             lvs = {}
             if lvs_path:
-                rc, lv_lines, err = self.module.run_command( '%s %s' % (lvs_path, lvm_util_options))
+                rc, lv_lines, err = self.module.run_command('%s %s' % (lvs_path, lvm_util_options))
                 for lv_line in lv_lines.splitlines():
                     items = lv_line.split()
                     lvs[items[0]] = {'size_g': items[3], 'vg': items[1]}
@@ -1644,7 +1667,9 @@ class SunOSHardware(Hardware):
             for line in fstab.splitlines():
                 fields = line.split('\t')
                 size_total, size_available = self._get_mount_size_facts(fields[1])
-                self.facts['mounts'].append({'mount': fields[1], 'device': fields[0], 'fstype' : fields[2], 'options': fields[3], 'time': fields[4], 'size_total': size_total, 'size_available': size_available})
+                self.facts['mounts'].append(
+                    {'mount': fields[1], 'device': fields[0], 'fstype': fields[2], 'options': fields[3],
+                     'time': fields[4], 'size_total': size_total, 'size_available': size_available})
 
     def get_dmi_facts(self):
         uname_path = self.module.get_bin_path("prtdiag")
@@ -1654,7 +1679,7 @@ class SunOSHardware(Hardware):
         """
         if out:
             system_conf = out.split('\n')[0]
-            found = re.search(r'(\w+\sEnterprise\s\w+)',system_conf)
+            found = re.search(r'(\w+\sEnterprise\s\w+)', system_conf)
             if found:
                 self.facts['product_name'] = found.group(1)
 
@@ -1767,12 +1792,13 @@ class OpenBSDHardware(Hardware):
             for line in fstab.splitlines():
                 if line.startswith('#') or line.strip() == '':
                     continue
-                fields = re.sub(r'\s+',' ', line).split()
+                fields = re.sub(r'\s+', ' ', line).split()
                 if fields[1] == 'none' or fields[3] == 'xx':
                     continue
                 size_total, size_available = self._get_mount_size_facts(fields[1])
-                self.facts['mounts'].append({'mount': fields[1], 'device': fields[0], 'fstype' : fields[2], 'options': fields[3], 'size_total': size_total, 'size_available': size_available})
-
+                self.facts['mounts'].append(
+                    {'mount': fields[1], 'device': fields[0], 'fstype': fields[2], 'options': fields[3],
+                     'size_total': size_total, 'size_available': size_available})
 
     def get_memory_facts(self):
         # Get free memory. vmstat output looks like:
@@ -1790,7 +1816,7 @@ class OpenBSDHardware(Hardware):
         # total: 69268k bytes allocated = 0k used, 69268k available
         rc, out, err = self.module.run_command("/sbin/swapctl -sk")
         if rc == 0:
-            swaptrans = { ord(u'k'): None, ord(u'm'): None, ord(u'g'): None}
+            swaptrans = {ord(u'k'): None, ord(u'm'): None, ord(u'g'): None}
             data = to_text(out, errors='surrogate_or_strict').split()
             self.facts['swapfree_mb'] = int(data[-2].translate(swaptrans)) // 1024
             self.facts['swaptotal_mb'] = int(data[1].translate(swaptrans)) // 1024
@@ -1824,16 +1850,17 @@ class OpenBSDHardware(Hardware):
         # best-effort basis. As a bonus we also get facts on non-amd64/i386
         # platforms this way.
         sysctl_to_dmi = {
-            'hw.product':  'product_name',
-            'hw.version':  'product_version',
-            'hw.uuid':     'product_uuid',
+            'hw.product': 'product_name',
+            'hw.version': 'product_version',
+            'hw.uuid': 'product_uuid',
             'hw.serialno': 'product_serial',
-            'hw.vendor':   'system_vendor',
+            'hw.vendor': 'system_vendor',
         }
 
         for mib in sysctl_to_dmi:
             if mib in self.sysctl:
                 self.facts[sysctl_to_dmi[mib]] = self.sysctl[mib]
+
 
 class FreeBSDHardware(Hardware):
     """
@@ -1876,7 +1903,6 @@ class FreeBSDHardware(Hardware):
             if 'Logical CPUs per core' in line:
                 self.facts['processor_cores'] = line.split()[4]
 
-
     def get_memory_facts(self):
         rc, out, err = self.module.run_command("/sbin/sysctl vm.stats")
         for line in out.splitlines():
@@ -1910,14 +1936,17 @@ class FreeBSDHardware(Hardware):
             for line in fstab.splitlines():
                 if line.startswith('#') or line.strip() == '':
                     continue
-                fields = re.sub(r'\s+',' ',line).split()
+                fields = re.sub(r'\s+', ' ', line).split()
                 size_total, size_available = self._get_mount_size_facts(fields[1])
-                self.facts['mounts'].append({'mount': fields[1], 'device': fields[0], 'fstype' : fields[2], 'options': fields[3], 'size_total': size_total, 'size_available': size_available})
+                self.facts['mounts'].append(
+                    {'mount': fields[1], 'device': fields[0], 'fstype': fields[2], 'options': fields[3],
+                     'size_total': size_total, 'size_available': size_available})
 
     def get_device_facts(self):
         sysdir = '/dev'
         self.facts['devices'] = {}
-        drives = re.compile('(ada?\d+|da\d+|a?cd\d+)') #TODO: rc, disks, err = self.module.run_command("/sbin/sysctl kern.disks")
+        drives = re.compile(
+            '(ada?\d+|da\d+|a?cd\d+)')  # TODO: rc, disks, err = self.module.run_command("/sbin/sysctl kern.disks")
         slices = re.compile('(ada?\d+s\d+\w*|da\d+s\d+\w*)')
         if os.path.isdir(sysdir):
             dirlist = sorted(os.listdir(sysdir))
@@ -1951,7 +1980,7 @@ class FreeBSDHardware(Hardware):
                 (rc, out, err) = self.module.run_command('%s -s %s' % (dmi_bin, v))
                 if rc == 0:
                     # Strip out commented lines (specific dmidecode output)
-                    self.facts[k] = ''.join([line for line in out.splitlines() if not line.startswith('#') ])
+                    self.facts[k] = ''.join([line for line in out.splitlines() if not line.startswith('#')])
                     try:
                         json.dumps(self.facts[k])
                     except UnicodeDecodeError:
@@ -2041,9 +2070,11 @@ class NetBSDHardware(Hardware):
             for line in fstab.splitlines():
                 if line.startswith('#') or line.strip() == '':
                     continue
-                fields = re.sub(r'\s+',' ',line).split()
+                fields = re.sub(r'\s+', ' ', line).split()
                 size_total, size_available = self._get_mount_size_facts(fields[1])
-                self.facts['mounts'].append({'mount': fields[1], 'device': fields[0], 'fstype' : fields[2], 'options': fields[3], 'size_total': size_total, 'size_available': size_available})
+                self.facts['mounts'].append(
+                    {'mount': fields[1], 'device': fields[0], 'fstype': fields[2], 'options': fields[3],
+                     'size_total': size_total, 'size_available': size_available})
 
     def get_dmi_facts(self):
         # We don't use dmidecode(1) here because:
@@ -2053,16 +2084,17 @@ class NetBSDHardware(Hardware):
         # best-effort basis. As a bonus we also get facts on non-amd64/i386
         # platforms this way.
         sysctl_to_dmi = {
-            'machdep.dmi.system-product':  'product_name',
-            'machdep.dmi.system-version':  'product_version',
-            'machdep.dmi.system-uuid':     'product_uuid',
-            'machdep.dmi.system-serial':   'product_serial',
-            'machdep.dmi.system-vendor':   'system_vendor',
+            'machdep.dmi.system-product': 'product_name',
+            'machdep.dmi.system-version': 'product_version',
+            'machdep.dmi.system-uuid': 'product_uuid',
+            'machdep.dmi.system-serial': 'product_serial',
+            'machdep.dmi.system-vendor': 'system_vendor',
         }
 
         for mib in sysctl_to_dmi:
             if mib in self.sysctl:
                 self.facts[sysctl_to_dmi[mib]] = self.sysctl[mib]
+
 
 class AIX(Hardware):
     """
@@ -2087,7 +2119,6 @@ class AIX(Hardware):
 
     def get_cpu_facts(self):
         self.facts['processor'] = []
-
 
         rc, out, err = self.module.run_command("/usr/sbin/lsdev -Cc processor")
         if out:
@@ -2134,7 +2165,7 @@ class AIX(Hardware):
             swaptotal_mb = int(data[0].rstrip('MB'))
             percused = int(data[1].rstrip('%'))
             self.facts['swaptotal_mb'] = swaptotal_mb
-            self.facts['swapfree_mb'] = int(swaptotal_mb * ( 100 - percused ) / 100)
+            self.facts['swapfree_mb'] = int(swaptotal_mb * (100 - percused) / 100)
 
     def get_dmi_facts(self):
         rc, out, err = self.module.run_command("/usr/sbin/lsattr -El sys0 -a fwversion")
@@ -2152,6 +2183,7 @@ class AIX(Hardware):
                         self.facts['lpar_info'] = data[1].strip()
                     if 'System Model' in line:
                         self.facts['product_name'] = data[1].strip()
+
     def get_vgs_facts(self):
         """
         Get vg and pv Facts
@@ -2170,27 +2202,26 @@ class AIX(Hardware):
 
         lsvg_path = self.module.get_bin_path("lsvg")
         xargs_path = self.module.get_bin_path("xargs")
-        cmd = "%s | %s %s -p" % (lsvg_path ,xargs_path,lsvg_path)
+        cmd = "%s | %s %s -p" % (lsvg_path, xargs_path, lsvg_path)
         if lsvg_path and xargs_path:
-            rc, out, err = self.module.run_command(cmd,use_unsafe_shell=True)
+            rc, out, err = self.module.run_command(cmd, use_unsafe_shell=True)
             if rc == 0 and out:
-                self.facts['vgs']= {}
+                self.facts['vgs'] = {}
                 for m in re.finditer(r'(\S+):\n.*FREE DISTRIBUTION(\n(\S+)\s+(\w+)\s+(\d+)\s+(\d+).*)+', out):
                     self.facts['vgs'][m.group(1)] = []
                     pp_size = 0
-                    cmd = "%s %s" % (lsvg_path,m.group(1))
+                    cmd = "%s %s" % (lsvg_path, m.group(1))
                     rc, out, err = self.module.run_command(cmd)
                     if rc == 0 and out:
-                        pp_size = re.search(r'PP SIZE:\s+(\d+\s+\S+)',out).group(1)
-                        for n in re.finditer(r'(\S+)\s+(\w+)\s+(\d+)\s+(\d+).*',m.group(0)):
-                            pv_info = { 'pv_name': n.group(1),
-                                        'pv_state': n.group(2),
-                                        'total_pps': n.group(3),
-                                        'free_pps': n.group(4),
-                                        'pp_size': pp_size
-                                      }
+                        pp_size = re.search(r'PP SIZE:\s+(\d+\s+\S+)', out).group(1)
+                        for n in re.finditer(r'(\S+)\s+(\w+)\s+(\d+)\s+(\d+).*', m.group(0)):
+                            pv_info = {'pv_name': n.group(1),
+                                       'pv_state': n.group(2),
+                                       'total_pps': n.group(3),
+                                       'free_pps': n.group(4),
+                                       'pp_size': pp_size
+                                       }
                             self.facts['vgs'][m.group(1)].append(pv_info)
-
 
     def get_mount_facts(self):
         self.facts['mounts'] = []
@@ -2201,14 +2232,15 @@ class AIX(Hardware):
         if mount_out:
             for line in mount_out.split('\n'):
                 fields = line.split()
-                if len(fields) != 0 and fields[0] != 'node' and fields[0][0] != '-' and re.match('^/.*|^[a-zA-Z].*|^[0-9].*', fields[0]):
+                if len(fields) != 0 and fields[0] != 'node' and fields[0][0] != '-' and re.match(
+                        '^/.*|^[a-zA-Z].*|^[0-9].*', fields[0]):
                     if re.match('^/', fields[0]):
                         # normal mount
                         self.facts['mounts'].append({'mount': fields[1],
-                                                 'device': fields[0],
-                                                 'fstype' : fields[2],
-                                                 'options': fields[6],
-                                                 'time': '%s %s %s' % ( fields[3], fields[4], fields[5])})
+                                                     'device': fields[0],
+                                                     'fstype': fields[2],
+                                                     'options': fields[6],
+                                                     'time': '%s %s %s' % (fields[3], fields[4], fields[5])})
                     else:
                         # nfs or cifs based mount
                         # in case of nfs if no mount options are provided on command line
@@ -2216,10 +2248,11 @@ class AIX(Hardware):
                         if len(fields) < 8:
                             fields.append("")
                         self.facts['mounts'].append({'mount': fields[2],
-                                                 'device': '%s:%s' % (fields[0], fields[1]),
-                                                 'fstype' : fields[3],
-                                                 'options': fields[7],
-                                                 'time': '%s %s %s' % ( fields[4], fields[5], fields[6])})
+                                                     'device': '%s:%s' % (fields[0], fields[1]),
+                                                     'fstype': fields[3],
+                                                     'options': fields[7],
+                                                     'time': '%s %s %s' % (fields[4], fields[5], fields[6])})
+
 
 class HPUX(Hardware):
     """
@@ -2247,75 +2280,86 @@ class HPUX(Hardware):
         if self.facts['architecture'] == '9000/800':
             rc, out, err = self.module.run_command("ioscan -FkCprocessor | wc -l", use_unsafe_shell=True)
             self.facts['processor_count'] = int(out.strip())
-        #Working with machinfo mess
+        # Working with machinfo mess
         elif self.facts['architecture'] == 'ia64':
             if self.facts['distribution_version'] == "B.11.23":
-                rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep 'Number of CPUs'", use_unsafe_shell=True)
+                rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep 'Number of CPUs'",
+                                                       use_unsafe_shell=True)
                 self.facts['processor_count'] = int(out.strip().split('=')[1])
-                rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep 'processor family'", use_unsafe_shell=True)
+                rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep 'processor family'",
+                                                       use_unsafe_shell=True)
                 self.facts['processor'] = re.search('.*(Intel.*)', out).groups()[0].strip()
                 rc, out, err = self.module.run_command("ioscan -FkCprocessor | wc -l", use_unsafe_shell=True)
                 self.facts['processor_cores'] = int(out.strip())
             if self.facts['distribution_version'] == "B.11.31":
-                #if machinfo return cores strings release B.11.31 > 1204
-                rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep core | wc -l", use_unsafe_shell=True)
-                if out.strip()== '0':
-                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep Intel", use_unsafe_shell=True)
+                # if machinfo return cores strings release B.11.31 > 1204
+                rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep core | wc -l",
+                                                       use_unsafe_shell=True)
+                if out.strip() == '0':
+                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep Intel",
+                                                           use_unsafe_shell=True)
                     self.facts['processor_count'] = int(out.strip().split(" ")[0])
-                    #If hyperthreading is active divide cores by 2
+                    # If hyperthreading is active divide cores by 2
                     rc, out, err = self.module.run_command("/usr/sbin/psrset | grep LCPU", use_unsafe_shell=True)
-                    data = re.sub(' +',' ',out).strip().split(' ')
+                    data = re.sub(' +', ' ', out).strip().split(' ')
                     if len(data) == 1:
                         hyperthreading = 'OFF'
                     else:
                         hyperthreading = data[1]
-                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep logical", use_unsafe_shell=True)
+                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep logical",
+                                                           use_unsafe_shell=True)
                     data = out.strip().split(" ")
                     if hyperthreading == 'ON':
-                        self.facts['processor_cores'] = int(data[0])/2
+                        self.facts['processor_cores'] = int(data[0]) / 2
                     else:
                         if len(data) == 1:
                             self.facts['processor_cores'] = self.facts['processor_count']
                         else:
                             self.facts['processor_cores'] = int(data[0])
-                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep Intel |cut -d' ' -f4-", use_unsafe_shell=True)
+                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep Intel |cut -d' ' -f4-",
+                                                           use_unsafe_shell=True)
                     self.facts['processor'] = out.strip()
                 else:
-                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | egrep 'socket[s]?$' | tail -1", use_unsafe_shell=True)
+                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | egrep 'socket[s]?$' | tail -1",
+                                                           use_unsafe_shell=True)
                     self.facts['processor_count'] = int(out.strip().split(" ")[0])
-                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep -e '[0-9] core' | tail -1", use_unsafe_shell=True)
+                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep -e '[0-9] core' | tail -1",
+                                                           use_unsafe_shell=True)
                     self.facts['processor_cores'] = int(out.strip().split(" ")[0])
-                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep Intel", use_unsafe_shell=True)
+                    rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep Intel",
+                                                           use_unsafe_shell=True)
                     self.facts['processor'] = out.strip()
 
     def get_memory_facts(self):
         pagesize = 4096
         rc, out, err = self.module.run_command("/usr/bin/vmstat | tail -1", use_unsafe_shell=True)
-        data = int(re.sub(' +',' ',out).split(' ')[5].strip())
+        data = int(re.sub(' +', ' ', out).split(' ')[5].strip())
         self.facts['memfree_mb'] = pagesize * data // 1024 // 1024
         if self.facts['architecture'] == '9000/800':
             try:
                 rc, out, err = self.module.run_command("grep Physical /var/adm/syslog/syslog.log")
-                data = re.search('.*Physical: ([0-9]*) Kbytes.*',out).groups()[0].strip()
+                data = re.search('.*Physical: ([0-9]*) Kbytes.*', out).groups()[0].strip()
                 self.facts['memtotal_mb'] = int(data) // 1024
             except AttributeError:
-                #For systems where memory details aren't sent to syslog or the log has rotated, use parsed
-                #adb output. Unfortunately /dev/kmem doesn't have world-read, so this only works as root.
+                # For systems where memory details aren't sent to syslog or the log has rotated, use parsed
+                # adb output. Unfortunately /dev/kmem doesn't have world-read, so this only works as root.
                 if os.access("/dev/kmem", os.R_OK):
-                    rc, out, err = self.module.run_command("echo 'phys_mem_pages/D' | adb -k /stand/vmunix /dev/kmem | tail -1 | awk '{print $2}'", use_unsafe_shell=True)
+                    rc, out, err = self.module.run_command(
+                        "echo 'phys_mem_pages/D' | adb -k /stand/vmunix /dev/kmem | tail -1 | awk '{print $2}'",
+                        use_unsafe_shell=True)
                     if not err:
                         data = out
                         self.facts['memtotal_mb'] = int(data) / 256
         else:
             rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo | grep Memory", use_unsafe_shell=True)
-            data = re.search('Memory[\ :=]*([0-9]*).*MB.*',out).groups()[0].strip()
+            data = re.search('Memory[\ :=]*([0-9]*).*MB.*', out).groups()[0].strip()
             self.facts['memtotal_mb'] = int(data)
         rc, out, err = self.module.run_command("/usr/sbin/swapinfo -m -d -f -q")
         self.facts['swaptotal_mb'] = int(out.strip())
         rc, out, err = self.module.run_command("/usr/sbin/swapinfo -m -d -f | egrep '^dev|^fs'", use_unsafe_shell=True)
         swap = 0
         for line in out.strip().splitlines():
-            swap += int(re.sub(' +',' ',line).split(' ')[3].strip())
+            swap += int(re.sub(' +', ' ', line).split(' ')[3].strip())
         self.facts['swapfree_mb'] = swap
 
     def get_hw_facts(self):
@@ -2325,11 +2369,14 @@ class HPUX(Hardware):
             separator = ':'
             if self.facts['distribution_version'] == "B.11.23":
                 separator = '='
-            rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo |grep -i 'Firmware revision' | grep -v BMC", use_unsafe_shell=True)
+            rc, out, err = self.module.run_command(
+                "/usr/contrib/bin/machinfo |grep -i 'Firmware revision' | grep -v BMC", use_unsafe_shell=True)
             self.facts['firmware_version'] = out.split(separator)[1].strip()
-            rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo |grep -i 'Machine serial number' ",use_unsafe_shell=True)
+            rc, out, err = self.module.run_command("/usr/contrib/bin/machinfo |grep -i 'Machine serial number' ",
+                                                   use_unsafe_shell=True)
             if rc == 0 and out:
                 self.facts['product_serial'] = out.split(separator)[1].strip()
+
 
 class Darwin(Hardware):
     """
@@ -2345,7 +2392,7 @@ class Darwin(Hardware):
     platform = 'Darwin'
 
     def populate(self):
-        self.sysctl = self.get_sysctl(['hw','machdep','kern'])
+        self.sysctl = self.get_sysctl(['hw', 'machdep', 'kern'])
         self.get_mac_facts()
         self.get_cpu_facts()
         self.get_memory_facts()
@@ -2370,10 +2417,10 @@ class Darwin(Hardware):
         self.facts['osrevision'] = self.sysctl['kern.osrevision']
 
     def get_cpu_facts(self):
-        if 'machdep.cpu.brand_string' in self.sysctl: # Intel
+        if 'machdep.cpu.brand_string' in self.sysctl:  # Intel
             self.facts['processor'] = self.sysctl['machdep.cpu.brand_string']
             self.facts['processor_cores'] = self.sysctl['machdep.cpu.core_count']
-        else: # PowerPC
+        else:  # PowerPC
             system_profile = self.get_system_profile()
             self.facts['processor'] = '%s @ %s' % (system_profile['Processor Name'], system_profile['Processor Speed'])
             self.facts['processor_cores'] = self.sysctl['hw.physicalcpu']
@@ -2384,6 +2431,7 @@ class Darwin(Hardware):
         rc, out, err = self.module.run_command("sysctl hw.usermem")
         if rc == 0:
             self.facts['memfree_mb'] = int(out.splitlines()[-1].split()[1]) // 1024 // 1024
+
 
 class HurdHardware(LinuxHardware):
     """
@@ -2403,6 +2451,7 @@ class HurdHardware(LinuxHardware):
             pass
         return self.facts
 
+
 class Network(Facts):
     """
     This is a generic Network subclass of Facts.  This should be further
@@ -2415,12 +2464,12 @@ class Network(Facts):
     """
     platform = 'Generic'
 
-    IPV6_SCOPE = { '0' : 'global',
-                   '10' : 'host',
-                   '20' : 'link',
-                   '40' : 'admin',
-                   '50' : 'site',
-                   '80' : 'organization' }
+    IPV6_SCOPE = {'0': 'global',
+                  '10': 'host',
+                  '20': 'link',
+                  '40': 'admin',
+                  '50': 'site',
+                  '80': 'organization'}
 
     def __new__(cls, *arguments, **keyword):
         # When Network is created, it chooses a subclass to create instead.
@@ -2440,6 +2489,7 @@ class Network(Facts):
 
     def populate(self):
         return self.facts
+
 
 class LinuxNetwork(Network):
     """
@@ -2478,13 +2528,13 @@ class LinuxNetwork(Network):
         #     ip -6 route get 2404:6800:400a:800::1012    -> ipv6.google.com
         # to find out the default outgoing interface, address, and gateway
         command = dict(
-            v4 = [ip_path, '-4', 'route', 'get', '8.8.8.8'],
-            v6 = [ip_path, '-6', 'route', 'get', '2404:6800:400a:800::1012']
+            v4=[ip_path, '-4', 'route', 'get', '8.8.8.8'],
+            v6=[ip_path, '-6', 'route', 'get', '2404:6800:400a:800::1012']
         )
-        interface = dict(v4 = {}, v6 = {})
+        interface = dict(v4={}, v6={})
         for v in 'v4', 'v6':
             if v == 'v6' and self.facts['os_family'] == 'RedHat' \
-                and self.facts['distribution_version'].startswith('4.'):
+                    and self.facts['distribution_version'].startswith('4.'):
                 continue
             if v == 'v6' and not socket.has_ipv6:
                 continue
@@ -2498,25 +2548,25 @@ class LinuxNetwork(Network):
             if len(words) > 0 and words[0] == command[v][-1]:
                 for i in range(len(words) - 1):
                     if words[i] == 'dev':
-                        interface[v]['interface'] = words[i+1]
+                        interface[v]['interface'] = words[i + 1]
                     elif words[i] == 'src':
-                        interface[v]['address'] = words[i+1]
-                    elif words[i] == 'via' and words[i+1] != command[v][-1]:
-                        interface[v]['gateway'] = words[i+1]
+                        interface[v]['address'] = words[i + 1]
+                    elif words[i] == 'via' and words[i + 1] != command[v][-1]:
+                        interface[v]['gateway'] = words[i + 1]
         return interface['v4'], interface['v6']
 
     def get_interfaces_info(self, ip_path, default_ipv4, default_ipv6):
         interfaces = {}
         ips = dict(
-            all_ipv4_addresses = [],
-            all_ipv6_addresses = [],
+            all_ipv4_addresses=[],
+            all_ipv6_addresses=[],
         )
 
         for path in glob.glob('/sys/class/net/*'):
             if not os.path.isdir(path):
                 continue
             device = os.path.basename(path)
-            interfaces[device] = { 'device': device }
+            interfaces[device] = {'device': device}
             if os.path.exists(os.path.join(path, 'address')):
                 macaddress = get_file_content(os.path.join(path, 'address'), default='')
                 if macaddress and macaddress != '00:00:00:00:00:00':
@@ -2525,44 +2575,50 @@ class LinuxNetwork(Network):
                 interfaces[device]['mtu'] = int(get_file_content(os.path.join(path, 'mtu')))
             if os.path.exists(os.path.join(path, 'operstate')):
                 interfaces[device]['active'] = get_file_content(os.path.join(path, 'operstate')) != 'down'
-            if os.path.exists(os.path.join(path, 'device','driver', 'module')):
-                interfaces[device]['module'] = os.path.basename(os.path.realpath(os.path.join(path, 'device', 'driver', 'module')))
+            if os.path.exists(os.path.join(path, 'device', 'driver', 'module')):
+                interfaces[device]['module'] = os.path.basename(
+                    os.path.realpath(os.path.join(path, 'device', 'driver', 'module')))
             if os.path.exists(os.path.join(path, 'type')):
                 _type = get_file_content(os.path.join(path, 'type'))
                 interfaces[device]['type'] = self.INTERFACE_TYPE.get(_type, 'unknown')
             if os.path.exists(os.path.join(path, 'bridge')):
                 interfaces[device]['type'] = 'bridge'
-                interfaces[device]['interfaces'] = [ os.path.basename(b) for b in glob.glob(os.path.join(path, 'brif', '*')) ]
+                interfaces[device]['interfaces'] = [os.path.basename(b) for b in
+                                                    glob.glob(os.path.join(path, 'brif', '*'))]
                 if os.path.exists(os.path.join(path, 'bridge', 'bridge_id')):
                     interfaces[device]['id'] = get_file_content(os.path.join(path, 'bridge', 'bridge_id'), default='')
                 if os.path.exists(os.path.join(path, 'bridge', 'stp_state')):
                     interfaces[device]['stp'] = get_file_content(os.path.join(path, 'bridge', 'stp_state')) == '1'
             if os.path.exists(os.path.join(path, 'bonding')):
                 interfaces[device]['type'] = 'bonding'
-                interfaces[device]['slaves'] = get_file_content(os.path.join(path, 'bonding', 'slaves'), default='').split()
-                interfaces[device]['mode'] = get_file_content(os.path.join(path, 'bonding', 'mode'), default='').split()[0]
-                interfaces[device]['miimon'] = get_file_content(os.path.join(path, 'bonding', 'miimon'), default='').split()[0]
-                interfaces[device]['lacp_rate'] = get_file_content(os.path.join(path, 'bonding', 'lacp_rate'), default='').split()[0]
+                interfaces[device]['slaves'] = get_file_content(os.path.join(path, 'bonding', 'slaves'),
+                                                                default='').split()
+                interfaces[device]['mode'] = \
+                get_file_content(os.path.join(path, 'bonding', 'mode'), default='').split()[0]
+                interfaces[device]['miimon'] = \
+                get_file_content(os.path.join(path, 'bonding', 'miimon'), default='').split()[0]
+                interfaces[device]['lacp_rate'] = \
+                get_file_content(os.path.join(path, 'bonding', 'lacp_rate'), default='').split()[0]
                 primary = get_file_content(os.path.join(path, 'bonding', 'primary'))
                 if primary:
                     interfaces[device]['primary'] = primary
                     path = os.path.join(path, 'bonding', 'all_slaves_active')
                     if os.path.exists(path):
                         interfaces[device]['all_slaves_active'] = get_file_content(path) == '1'
-            if os.path.exists(os.path.join(path,'device')):
-                interfaces[device]['pciid'] = os.path.basename(os.readlink(os.path.join(path,'device')))
+            if os.path.exists(os.path.join(path, 'device')):
+                interfaces[device]['pciid'] = os.path.basename(os.readlink(os.path.join(path, 'device')))
             if os.path.exists(os.path.join(path, 'speed')):
                 speed = get_file_content(os.path.join(path, 'speed'))
                 if speed is not None:
                     interfaces[device]['speed'] = int(speed)
 
             # Check whether an interface is in promiscuous mode
-            if os.path.exists(os.path.join(path,'flags')):
+            if os.path.exists(os.path.join(path, 'flags')):
                 promisc_mode = False
                 # The second byte indicates whether the interface is in promiscuous mode.
                 # 1 = promisc
                 # 0 = no promisc
-                data = int(get_file_content(os.path.join(path, 'flags')),16)
+                data = int(get_file_content(os.path.join(path, 'flags')), 16)
                 promisc_mode = (data & 0x0100 > 0)
                 interfaces[device]['promisc'] = promisc_mode
 
@@ -2582,7 +2638,7 @@ class LinuxNetwork(Network):
                             address = words[1]
                             netmask_length = "32"
                         address_bin = struct.unpack('!L', socket.inet_aton(address))[0]
-                        netmask_bin = (1<<32) - (1<<32>>int(netmask_length))
+                        netmask_bin = (1 << 32) - (1 << 32 >> int(netmask_length))
                         netmask = socket.inet_ntoa(struct.pack('!L', netmask_bin))
                         network = socket.inet_ntoa(struct.pack('!L', address_bin & netmask_bin))
                         iface = words[-1]
@@ -2636,17 +2692,17 @@ class LinuxNetwork(Network):
                         if 'ipv6' not in interfaces[device]:
                             interfaces[device]['ipv6'] = []
                         interfaces[device]['ipv6'].append({
-                            'address' : address,
-                            'prefix'  : prefix,
-                            'scope'   : scope
+                            'address': address,
+                            'prefix': prefix,
+                            'scope': scope
                         })
                         # If this is the default address, update default_ipv6
                         if 'address' in default_ipv6 and default_ipv6['address'] == address:
-                            default_ipv6['prefix']     = prefix
-                            default_ipv6['scope']      = scope
+                            default_ipv6['prefix'] = prefix
+                            default_ipv6['scope'] = scope
                             default_ipv6['macaddress'] = macaddress
-                            default_ipv6['mtu']        = interfaces[device]['mtu']
-                            default_ipv6['type']       = interfaces[device].get("type", "unknown")
+                            default_ipv6['mtu'] = interfaces[device]['mtu']
+                            default_ipv6['type'] = interfaces[device].get("type", "unknown")
                         if not address == '::1':
                             ips['all_ipv6_addresses'].append(address)
 
@@ -2667,7 +2723,7 @@ class LinuxNetwork(Network):
         new_interfaces = {}
         for i in interfaces:
             if ':' in i:
-                new_interfaces[i.replace(':','_')] = interfaces[i]
+                new_interfaces[i.replace(':', '_')] = interfaces[i]
             else:
                 new_interfaces[i] = interfaces[i]
         return new_interfaces, ips
@@ -2683,10 +2739,10 @@ class LinuxNetwork(Network):
                 for line in stdout.strip().splitlines():
                     if not line or line.endswith(":"):
                         continue
-                    key,value = line.split(": ")
+                    key, value = line.split(": ")
                     if not value:
                         continue
-                    features[key.strip().replace('-','_')] = value.strip()
+                    features[key.strip().replace('-', '_')] = value.strip()
         return features
 
 
@@ -2742,11 +2798,11 @@ class GenericBsdIfconfigNetwork(Network):
         # to find out the default outgoing interface, address, and gateway
 
         command = dict(
-            v4 = [route_path, '-n', 'get', '8.8.8.8'],
-            v6 = [route_path, '-n', 'get', '-inet6', '2404:6800:400a:800::1012']
+            v4=[route_path, '-n', 'get', '8.8.8.8'],
+            v6=[route_path, '-n', 'get', '-inet6', '2404:6800:400a:800::1012']
         )
 
-        interface = dict(v4 = {}, v6 = {})
+        interface = dict(v4={}, v6={})
 
         for v in 'v4', 'v6':
 
@@ -2772,8 +2828,8 @@ class GenericBsdIfconfigNetwork(Network):
         interfaces = {}
         current_if = {}
         ips = dict(
-            all_ipv4_addresses = [],
-            all_ipv6_addresses = [],
+            all_ipv4_addresses=[],
+            all_ipv6_addresses=[],
         )
         # FreeBSD, DragonflyBSD, NetBSD, OpenBSD and OS X all implicitly add '-a'
         # when running the command 'ifconfig'.
@@ -2789,7 +2845,7 @@ class GenericBsdIfconfigNetwork(Network):
                     continue
                 elif re.match('^\S', line) and len(words) > 3:
                     current_if = self.parse_interface_line(words)
-                    interfaces[ current_if['device'] ] = current_if
+                    interfaces[current_if['device']] = current_if
                 elif words[0].startswith('options='):
                     self.parse_options_line(words, current_if, ips)
                 elif words[0] == 'nd6':
@@ -2816,12 +2872,12 @@ class GenericBsdIfconfigNetwork(Network):
     def parse_interface_line(self, words):
         device = words[0][0:-1]
         current_if = {'device': device, 'ipv4': [], 'ipv6': [], 'type': 'unknown'}
-        current_if['flags']  = self.get_options(words[1])
+        current_if['flags'] = self.get_options(words[1])
         if 'LOOPBACK' in current_if['flags']:
             current_if['type'] = 'loopback'
-        current_if['macaddress'] = 'unknown'    # will be overwritten later
+        current_if['macaddress'] = 'unknown'  # will be overwritten later
 
-        if len(words) >= 5 :  # Newer FreeBSD versions
+        if len(words) >= 5:  # Newer FreeBSD versions
             current_if['metric'] = words[3]
             current_if['mtu'] = words[5]
         else:
@@ -2969,14 +3025,15 @@ class HPUXNetwork(Network):
             for i in range(len(words) - 1):
                 if words[i][:3] == 'lan':
                     device = words[i]
-                    interfaces[device] = { 'device': device }
-                    address = words[i+3]
-                    interfaces[device]['ipv4'] = { 'address': address }
-                    network = words[i+2]
-                    interfaces[device]['ipv4'] = { 'network': network,
-                                                   'interface': device,
-                                                   'address': address }
+                    interfaces[device] = {'device': device}
+                    address = words[i + 3]
+                    interfaces[device]['ipv4'] = {'address': address}
+                    network = words[i + 2]
+                    interfaces[device]['ipv4'] = {'network': network,
+                                                  'interface': device,
+                                                  'address': address}
         return interfaces
+
 
 class DarwinNetwork(GenericBsdIfconfigNetwork):
     """
@@ -2988,7 +3045,7 @@ class DarwinNetwork(GenericBsdIfconfigNetwork):
     # media line is different to the default FreeBSD one
     def parse_media_line(self, words, current_if, ips):
         # not sure if this is useful - we also drop information
-        current_if['media'] = 'Unknown' # Mac does not give us this
+        current_if['media'] = 'Unknown'  # Mac does not give us this
         current_if['media_select'] = words[1]
         if len(words) > 2:
             # MacOSX sets the media to '<unknown type>' for bridge interface
@@ -3030,7 +3087,7 @@ class AIXNetwork(GenericBsdIfconfigNetwork):
 
         rc, out, err = self.module.run_command([netstat_path, '-nr'])
 
-        interface = dict(v4 = {}, v6 = {})
+        interface = dict(v4={}, v6={})
 
         lines = out.splitlines()
         for line in lines:
@@ -3050,8 +3107,8 @@ class AIXNetwork(GenericBsdIfconfigNetwork):
         interfaces = {}
         current_if = {}
         ips = dict(
-            all_ipv4_addresses = [],
-            all_ipv6_addresses = [],
+            all_ipv4_addresses=[],
+            all_ipv6_addresses=[],
         )
 
         uname_rc = None
@@ -3071,7 +3128,7 @@ class AIXNetwork(GenericBsdIfconfigNetwork):
                 # only this condition differs from GenericBsdIfconfigNetwork
                 if re.match('^\w*\d*:', line):
                     current_if = self.parse_interface_line(words)
-                    interfaces[ current_if['device'] ] = current_if
+                    interfaces[current_if['device']] = current_if
                 elif words[0].startswith('options='):
                     self.parse_options_line(words, current_if, ips)
                 elif words[0] == 'nd6':
@@ -3098,7 +3155,7 @@ class AIXNetwork(GenericBsdIfconfigNetwork):
                 if current_if['macaddress'] == 'unknown' and re.match('^en', current_if['device']):
                     entstat_path = self.module.get_bin_path('entstat')
                     if entstat_path:
-                        rc, out, err = self.module.run_command([entstat_path, current_if['device'] ])
+                        rc, out, err = self.module.run_command([entstat_path, current_if['device']])
                         if rc != 0:
                             break
                         for line in out.splitlines():
@@ -3116,7 +3173,7 @@ class AIXNetwork(GenericBsdIfconfigNetwork):
                 if 'mtu' not in current_if:
                     lsattr_path = self.module.get_bin_path('lsattr')
                     if lsattr_path:
-                        rc, out, err = self.module.run_command([lsattr_path,'-El', current_if['device'] ])
+                        rc, out, err = self.module.run_command([lsattr_path, '-El', current_if['device']])
                         if rc != 0:
                             break
                         for line in out.splitlines():
@@ -3131,8 +3188,9 @@ class AIXNetwork(GenericBsdIfconfigNetwork):
         device = words[0][0:-1]
         current_if = {'device': device, 'ipv4': [], 'ipv6': [], 'type': 'unknown'}
         current_if['flags'] = self.get_options(words[1])
-        current_if['macaddress'] = 'unknown'    # will be overwritten later
+        current_if['macaddress'] = 'unknown'  # will be overwritten later
         return current_if
+
 
 class OpenBSDNetwork(GenericBsdIfconfigNetwork):
     """
@@ -3149,6 +3207,7 @@ class OpenBSDNetwork(GenericBsdIfconfigNetwork):
     def parse_lladdr_line(self, words, current_if, ips):
         current_if['macaddress'] = words[1]
         current_if['type'] = 'ether'
+
 
 class NetBSDNetwork(GenericBsdIfconfigNetwork):
     """
@@ -3191,8 +3250,8 @@ class SunOSNetwork(GenericBsdIfconfigNetwork):
         interfaces = {}
         current_if = {}
         ips = dict(
-            all_ipv4_addresses = [],
-            all_ipv6_addresses = [],
+            all_ipv4_addresses=[],
+            all_ipv6_addresses=[],
         )
         rc, out, err = self.module.run_command([ifconfig_path, '-a'])
 
@@ -3203,7 +3262,7 @@ class SunOSNetwork(GenericBsdIfconfigNetwork):
 
                 if re.match('^\S', line) and len(words) > 3:
                     current_if = self.parse_interface_line(words, current_if, interfaces)
-                    interfaces[ current_if['device'] ] = current_if
+                    interfaces[current_if['device']] = current_if
                 elif words[0].startswith('options='):
                     self.parse_options_line(words, current_if, ips)
                 elif words[0] == 'nd6':
@@ -3249,7 +3308,7 @@ class SunOSNetwork(GenericBsdIfconfigNetwork):
         if 'LOOPBACK' in flags:
             current_if['type'] = 'loopback'
         current_if[v].append({'flags': flags, 'mtu': words[3]})
-        current_if['macaddress'] = 'unknown'    # will be overwritten later
+        current_if['macaddress'] = 'unknown'  # will be overwritten later
         return current_if
 
     # Solaris displays single digit octets in MAC addresses e.g. 0:1:2:d:e:f
@@ -3260,6 +3319,7 @@ class SunOSNetwork(GenericBsdIfconfigNetwork):
             octet = ('0' + octet)[-2:None]
             macaddress += (octet + ':')
         current_if['macaddress'] = macaddress[0:-1]
+
 
 class HurdPfinetNetwork(Network):
     """
@@ -3285,7 +3345,7 @@ class HurdPfinetNetwork(Network):
             self.facts['interfaces'] = []
             for i in out.split():
                 if '=' in i and i.startswith('--'):
-                    k,v = i.split('=',1)
+                    k, v = i.split('=', 1)
                     # remove '--'
                     k = k[2:]
                     if k == 'interface':
@@ -3304,7 +3364,7 @@ class HurdPfinetNetwork(Network):
                     elif k == 'netmask':
                         self.facts[current_if]['ipv4']['netmask'] = v
                     elif k == 'address6':
-                        address,prefix = v.split('/')
+                        address, prefix = v.split('/')
                         self.facts[current_if]['ipv6'].append({
                             'address': address,
                             'prefix': prefix,
@@ -3349,6 +3409,7 @@ class Virtual(Facts):
     def get_virtual_facts(self):
         self.facts['virtualization_type'] = ''
         self.facts['virtualization_role'] = ''
+
 
 class LinuxVirtual(Virtual):
     """
@@ -3546,6 +3607,7 @@ class LinuxVirtual(Virtual):
         self.facts['virtualization_role'] = 'NA'
         return
 
+
 class VirtualSysctlDetectionMixin(object):
     def detect_sysctl(self):
         self.sysctl_path = self.module.get_bin_path('sysctl')
@@ -3596,7 +3658,6 @@ class FreeBSDVirtual(Virtual):
     platform = 'FreeBSD'
 
     def get_virtual_facts(self):
-
         # Set empty values as default
         self.facts['virtualization_type'] = ''
         self.facts['virtualization_role'] = ''
@@ -3605,8 +3666,10 @@ class FreeBSDVirtual(Virtual):
             self.facts['virtualization_type'] = 'xen'
             self.facts['virtualization_role'] = 'guest'
 
+
 class DragonFlyVirtual(FreeBSDVirtual):
     platform = 'DragonFly'
+
 
 class OpenBSDVirtual(Virtual, VirtualSysctlDetectionMixin):
     """
@@ -3635,6 +3698,7 @@ class OpenBSDVirtual(Virtual, VirtualSysctlDetectionMixin):
             if match:
                 self.facts['virtualization_type'] = 'vmm'
                 self.facts['virtualization_role'] = 'host'
+
 
 class NetBSDVirtual(Virtual, VirtualSysctlDetectionMixin):
     platform = 'NetBSD'
@@ -3739,15 +3803,15 @@ class SunOSVirtual(Virtual):
                 try:
                     for line in out.splitlines():
                         fields = line.split('|')
-                        if( fields[0] == 'DOMAINROLE' and fields[1] == 'impl=LDoms' ):
+                        if (fields[0] == 'DOMAINROLE' and fields[1] == 'impl=LDoms'):
                             self.facts['virtualization_type'] = 'ldom'
                             self.facts['virtualization_role'] = 'guest'
                             hostfeatures = []
                             for field in fields[2:]:
                                 arg = field.split('=')
-                                if( arg[1] == 'true' ):
+                                if (arg[1] == 'true'):
                                     hostfeatures.append(arg[0])
-                            if( len(hostfeatures) > 0 ):
+                            if (len(hostfeatures) > 0):
                                 self.facts['virtualization_role'] = 'host (' + ','.join(hostfeatures) + ')'
                 except ValueError:
                     pass
@@ -3775,6 +3839,7 @@ class SunOSVirtual(Virtual):
                         self.facts['virtualization_type'] = 'kvm'
                         self.facts['virtualization_role'] = 'guest'
 
+
 class Ohai(Facts):
     """
     This is a subclass of Facts for including information gathered from Ohai.
@@ -3794,10 +3859,12 @@ class Ohai(Facts):
         except:
             pass
 
+
 class Facter(Facts):
     """
     This is a subclass of Facts for including information gathered from Facter.
     """
+
     def populate(self):
         self.run_facter()
         return self.facts
@@ -3840,11 +3907,13 @@ def get_file_content(path, default=None, strip=True):
             pass
     return data
 
+
 def get_uname_version(module):
     rc, out, err = module.run_command(['uname', '-v'])
     if rc == 0:
         return out
     return None
+
 
 def get_partition_uuid(partname):
     try:
@@ -3859,6 +3928,7 @@ def get_partition_uuid(partname):
 
     return None
 
+
 def get_file_lines(path):
     '''get list of lines from file'''
     data = get_file_content(path)
@@ -3868,18 +3938,19 @@ def get_file_lines(path):
         ret = []
     return ret
 
+
 def ansible_facts(module, gather_subset):
     facts = {}
     facts['gather_subset'] = list(gather_subset)
     facts.update(Facts(module).populate())
     for subset in gather_subset:
         facts.update(FACT_SUBSETS[subset](module,
-                                         load_on_init=False,
-                                         cached_facts=facts).populate())
+                                          load_on_init=False,
+                                          cached_facts=facts).populate())
     return facts
 
-def get_all_facts(module):
 
+def get_all_facts(module):
     setup_options = dict(module_setup=True)
 
     # Retrieve module parameters
@@ -3905,7 +3976,8 @@ def get_all_facts(module):
             exclude = False
 
         if subset not in VALID_SUBSETS:
-            raise TypeError("Bad subset '%s' given to Ansible. gather_subset options allowed: all, %s" % (subset, ", ".join(FACT_SUBSETS.keys())))
+            raise TypeError("Bad subset '%s' given to Ansible. gather_subset options allowed: all, %s" % (
+            subset, ", ".join(FACT_SUBSETS.keys())))
 
         if exclude:
             exclude_subsets.add(subset)
@@ -3937,13 +4009,14 @@ def get_all_facts(module):
     for (k, v) in facts.items():
         setup_options["ansible_%s" % k.replace('-', '_')] = v
 
-    setup_result = { 'ansible_facts': {} }
+    setup_result = {'ansible_facts': {}}
 
-    for (k,v) in setup_options.items():
+    for (k, v) in setup_options.items():
         if module.params['filter'] == '*' or fnmatch.fnmatch(k, module.params['filter']):
             setup_result['ansible_facts'][k] = v
 
     return setup_result
+
 
 # Allowed fact subset for gather_subset options and what classes they use
 # Note: have to define this at the bottom as it references classes defined earlier in this file
@@ -3955,3 +4028,4 @@ FACT_SUBSETS = dict(
     facter=Facter,
 )
 VALID_SUBSETS = frozenset(FACT_SUBSETS.keys())
+
