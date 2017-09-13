@@ -1,5 +1,7 @@
 - hosts: localhost
   tasks:
-    - debug:
-        msg: "libreOffice version - {{ ansible_libreOffice }}"
+    - name: Collect additional facts
+      my_module:
+      register: my_facts
 
+    - debug: var=my_facts.libre_office_version

@@ -23,8 +23,6 @@ Options = namedtuple('Options', ['listtags', 'listtasks', 'listhosts', 'syntax',
 
 options = Options(listtags=False, listtasks=False, listhosts=False, syntax=False, connection='local', module_path=None, forks=100, remote_user='', private_key_file=None, ssh_common_args=None, ssh_extra_args=None, sftp_extra_args=None, scp_extra_args=None, become=False, become_method=None, become_user='root', verbosity=None, check=False)
 
-#variable_manager
-
 pbex = PlaybookExecutor(playbooks=[playbook_path], inventory=inventory, variable_manager=variable_manager, loader=loader, options=options, passwords={})
 
 results = pbex.run()
